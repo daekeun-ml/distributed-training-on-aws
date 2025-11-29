@@ -792,6 +792,19 @@ aws ecr describe-images \
 +--------+------------------------------------+---------------+
 ```
 
+#### 환경 변수 저장
+
+이미지 관련 정보를 환경 변수 파일에 추가합니다:
+
+```bash
+# 환경 변수 파일에 추가
+cat >> ~/pcluster-env.sh << EOF
+export ECR_REPO_NAME=${ECR_REPO_NAME}
+export ECR_REPO_URI=${ECR_REPO_URI}
+export IMAGE_TAG=${IMAGE_TAG}
+export TRAINING_IMAGE_URI=${ECR_REPO_URI}:${IMAGE_TAG}
+EOF
+
 ---
 
 ## 5. S3 버킷 준비
@@ -841,6 +854,15 @@ aws s3 ls | grep ${S3_BUCKET_NAME}
 **예상 출력:**
 ```
 2025-11-29 16:08:26 parallelcluster-123456789012-us-east-1
+```
+
+#### 환경 변수 저장
+나중에 사용하기 위해 환경 변수를 파일에 저장합니다:
+```
+cat >> ~/pcluster-env.sh << EOF
+export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
+export S3_BUCKET_NAME=${S3_BUCKET_NAME}
+EOF
 ```
 
 ---
@@ -1058,11 +1080,16 @@ aws s3 sync ./wikitext-2-prepared s3://parallelcluster-123456789012-us-east-1/da
 
 **예상 출력:**
 ```
-upload: ./wikitext-2-prepared/dataset_info.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/dataset_info.json
-upload: ./wikitext-2-prepared/train/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/train/data-00000-of-00001.arrow
-upload: ./wikitext-2-prepared/validation/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/validation/data-00000-of-00001.arrow
-upload: ./wikitext-2-prepared/test/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/test/data-00000-of-00001.arrow
-upload: ./wikitext-2-prepared/state.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/state.json
+upload: wikitext-2-prepared/dataset_dict.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/dataset_dict.json
+upload: wikitext-2-prepared/train/dataset_info.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/train/dataset_info.json
+upload: wikitext-2-prepared/validation/state.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/validation/state.json
+upload: wikitext-2-prepared/test/state.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/test/state.json
+upload: wikitext-2-prepared/test/dataset_info.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/test/dataset_info.json
+upload: wikitext-2-prepared/train/state.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/train/state.json
+upload: wikitext-2-prepared/validation/dataset_info.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/validation/dataset_info.json
+upload: wikitext-2-prepared/test/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/test/data-00000-of-00001.arrow
+upload: wikitext-2-prepared/validation/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/validation/data-00000-of-00001.arrow
+upload: wikitext-2-prepared/train/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/train/data-00000-of-00001.arrow
 ```
 
 > ⏱️ **예상 소요 시간:** 약 1-2분 (업로드)
@@ -1076,11 +1103,16 @@ aws s3 ls s3://${S3_BUCKET_NAME}/data/wikitext-2/ --recursive --human-readable
 
 **예상 출력:**
 ```
-2024-01-01 12:00:00    2.1 KiB data/wikitext-2/dataset_info.json
-2024-01-01 12:00:00    4.5 MiB data/wikitext-2/train/data-00000-of-00001.arrow
-2024-01-01 12:00:00  512.3 KiB data/wikitext-2/validation/data-00000-of-00001.arrow
-2024-01-01 12:00:00  589.7 KiB data/wikitext-2/test/data-00000-of-00001.arrow
-2024-01-01 12:00:00      156 data/wikitext-2/state.json
+2025-11-29 16:49:33   43 Bytes data/wikitext-2/dataset_dict.json
+2025-11-29 16:49:33    1.2 MiB data/wikitext-2/test/data-00000-of-00001.arrow
+2025-11-29 16:49:33    1.4 KiB data/wikitext-2/test/dataset_info.json
+2025-11-29 16:49:34  249 Bytes data/wikitext-2/test/state.json
+2025-11-29 16:49:34   10.6 MiB data/wikitext-2/train/data-00000-of-00001.arrow
+2025-11-29 16:49:33    1.4 KiB data/wikitext-2/train/dataset_info.json
+2025-11-29 16:49:34  250 Bytes data/wikitext-2/train/state.json
+2025-11-29 16:49:34    1.1 MiB data/wikitext-2/validation/data-00000-of-00001.arrow
+2025-11-29 16:49:34    1.4 KiB data/wikitext-2/validation/dataset_info.json
+2025-11-29 16:49:33  255 Bytes data/wikitext-2/validation/state.json
 ```
 
 #### 로컬 파일 정리 (선택사항)
@@ -1238,65 +1270,9 @@ aws fsx describe-data-repository-associations \
 +----------------------+---------------+-----------+-----------+
 ```
 
-#### DRA 상태가 AVAILABLE이 될 때까지 대기
-
-```bash
-# DRA 생성 완료 확인 (모든 DRA가 AVAILABLE 상태가 될 때까지)
-while true; do
-  STATUS=$(aws fsx describe-data-repository-associations \
-    --filters Name=file-system-id,Values=${FSX_LUSTRE_ID} \
-    --region ${AWS_REGION} \
-    --query 'Associations[?Lifecycle!=`AVAILABLE`].Lifecycle' \
-    --output text)
-  
-  if [ -z "$STATUS" ]; then
-    echo "✅ All DRAs are AVAILABLE!"
-    break
-  else
-    echo "Waiting for DRAs to be AVAILABLE... (Current: $STATUS)"
-    sleep 30
-  fi
-done
-```
-
+> 📝 **주의:** 
+> !!!! DRA 상태가 AVAILABLE이 될 때까지 대기 합니다!!!!
 > ⏱️ **예상 소요 시간:** 각 DRA당 1-2분, 총 5-10분
-
-#### 데이터 접근 예시
-
-DRA 설정이 완료되면 클러스터에서 다음과 같이 데이터에 접근할 수 있습니다.
-
-> 💡 **Lazy Loading:** FSx Lustre는 파일에 처음 접근할 때 S3에서 자동으로 데이터를 가져옵니다. 메타데이터는 DRA 생성 시 즉시 로드되므로 파일 목록은 바로 확인할 수 있습니다.
-
-```bash
-# 클러스터 Head Node에서 실행 (클러스터 생성 후)
-
-# WikiText-2 데이터셋 확인 (5.3에서 업로드한 데이터)
-# S3: s3://bucket/data/wikitext-2/
-# FSx: /lustre/data/wikitext-2/
-ls -lh /lustre/data/wikitext-2/
-
-# 예상 출력:
-# drwxr-xr-x 2 root root 4.0K Jan 1 12:00 train
-# drwxr-xr-x 2 root root 4.0K Jan 1 12:00 validation
-# drwxr-xr-x 2 root root 4.0K Jan 1 12:00 test
-# -rw-r--r-- 1 root root 2.1K Jan 1 12:00 dataset_info.json
-# -rw-r--r-- 1 root root  156 Jan 1 12:00 state.json
-
-# 학습 데이터 파일 확인
-ls -lh /lustre/data/wikitext-2/train/
-
-# 데이터 읽기 테스트 (첫 접근 시 S3에서 자동 로드)
-head /lustre/data/wikitext-2/dataset_info.json
-
-# 체크포인트 저장 (FSx → S3로 자동 export)
-# 학습 스크립트에서 사용할 경로
-echo "epoch_10_checkpoint" > /lustre/checkpoints/model_epoch_10.txt
-
-# 로그 저장 (FSx → S3로 자동 export)
-echo "Training started at $(date)" > /lustre/logs/training.log
-
-# 최종 결과 저장 (FSx → S3로 자동 export)
-echo "Training completed" > /lustre/results/final_model_info.txt
 
 #### FSx Lustre 디렉토리 환경 변수 저장
 
@@ -1321,24 +1297,6 @@ EOF
 ---
 
 ### 5.5 환경 변수 저장
-
-S3 버킷 및 이미지 정보를 환경 변수 파일에 추가합니다:
-
-```bash
-# 환경 변수 파일에 추가
-cat >> ~/pcluster-env.sh << EOF
-export AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
-export S3_BUCKET_NAME=${S3_BUCKET_NAME}
-export ECR_REPO_NAME=${ECR_REPO_NAME}
-export ECR_REPO_URI=${ECR_REPO_URI}
-export IMAGE_TAG=${IMAGE_TAG}
-export TRAINING_IMAGE_URI=${TRAINING_IMAGE_URI}
-EOF
-
-# 확인
-source ~/pcluster-env.sh
-```
-
 #### 전체 환경 변수 확인
 
 ```bash
@@ -1350,7 +1308,7 @@ cat ~/pcluster-env.sh
 ```bash
 export AWS_REGION=us-east-1
 export STACK_NAME=parallelcluster-prerequisites
-export PRIMARY_AZ=us-east-1a
+export PRIMARY_AZ=us-east-1f
 export VPC_ID=vpc-0a1b2c3d4e5f6g7h8
 export PUBLIC_SUBNET_ID=subnet-0a1b2c3d
 export PRIVATE_SUBNET_ID=subnet-4e5f6g7h
@@ -1384,15 +1342,27 @@ aws s3 ls s3://${S3_BUCKET_NAME}/ --recursive --human-readable --summarize
 
 **예상 구조:**
 ```
-2024-01-01 12:00:00    3.2 KiB scripts/bootstrap/head-node-enroot-pyxis-setup.sh
-2024-01-01 12:00:00    2.8 KiB scripts/bootstrap/compute-node-enroot-pyxis-setup.sh
-2024-01-01 12:00:00    1.2 KiB data/sample/README.txt
-                           PRE checkpoints/
-                           PRE logs/
-                           PRE results/
+2025-11-29 16:17:31    0 Bytes checkpoints/
+2025-11-29 16:17:31    0 Bytes data/
+2025-11-29 16:49:33   43 Bytes data/wikitext-2/dataset_dict.json
+2025-11-29 16:49:33    1.2 MiB data/wikitext-2/test/data-00000-of-00001.arrow
+2025-11-29 16:49:33    1.4 KiB data/wikitext-2/test/dataset_info.json
+2025-11-29 16:49:34  249 Bytes data/wikitext-2/test/state.json
+2025-11-29 16:49:34   10.6 MiB data/wikitext-2/train/data-00000-of-00001.arrow
+2025-11-29 16:49:33    1.4 KiB data/wikitext-2/train/dataset_info.json
+2025-11-29 16:49:34  250 Bytes data/wikitext-2/train/state.json
+2025-11-29 16:49:34    1.1 MiB data/wikitext-2/validation/data-00000-of-00001.arrow
+2025-11-29 16:49:34    1.4 KiB data/wikitext-2/validation/dataset_info.json
+2025-11-29 16:49:33  255 Bytes data/wikitext-2/validation/state.json
+2025-11-29 16:17:32    0 Bytes logs/
+2025-11-29 16:17:35    0 Bytes results/
+2025-11-29 16:09:55    0 Bytes scripts/
+2025-11-29 16:09:56    0 Bytes scripts/bootstrap/
+2025-11-29 16:11:37    7.5 KiB scripts/bootstrap/compute-node-enroot-pyxis-setup.sh
+2025-11-29 16:11:35    8.3 KiB scripts/bootstrap/head-node-enroot-pyxis-setup.sh
 
-Total Objects: 3
-   Total Size: 7.2 KiB
+Total Objects: 18
+   Total Size: 12.9 MiB
 ```
 
 ---
