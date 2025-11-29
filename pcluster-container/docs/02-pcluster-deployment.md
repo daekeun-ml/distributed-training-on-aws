@@ -388,9 +388,9 @@ sudo su - ubuntu
 
 ### ⚠️ FSx Lustre 마운트 문제 해결 (중요)
 
-> 🚨 **현재 알려진 이슈 (2025.11.30 기준):**
+> 🚨 **현재 이슈 (2025.11.30 기준):**
 > 
-> Head Node의 Lustre 클라이언트 커널 모듈 버전과 실제 시스템 커널 버전이 일치하지 않아 
+> Head Node / Compute Node 의 Lustre 클라이언트 커널 모듈 버전과 실제 시스템 커널 버전이 일치하지 않아 
 > FSx Lustre가 자동으로 마운트되지 않는 현상이 발생하고 있습니다.
 > 
 > 이는 Ubuntu 22.04 이미지의 커널 업데이트와 Lustre 클라이언트 패키지 버전 불일치로 인한 문제입니다.
@@ -614,35 +614,12 @@ drwxr-xr-x 2 root root 4.0K Nov 29 16:49 validation
 
 ```bash
 # Enroot 버전 확인
-enroot version
-
-# Enroot 설정 확인
-enroot list
+sudo enroot version
 ```
 
 **예상 출력:**
 ```
 3.4.1
-```
-
-#### Pyxis 확인
-
-```bash
-# Pyxis 플러그인 확인
-ls -la /usr/local/lib/slurm/
-
-# Slurm 설정에서 Pyxis 확인
-grep -i pyxis /opt/slurm/etc/plugstack.conf
-```
-
-**예상 출력:**
-```
-total 24
-drwxr-xr-x 2 root root  4096 Nov 29 17:15 .
-drwxr-xr-x 4 root root  4096 Nov 29 17:00 ..
--rwxr-xr-x 1 root root 14896 Nov 29 17:15 spank_pyxis.so
-
-optional /usr/local/lib/slurm/spank_pyxis.so
 ```
 
 ---
@@ -659,7 +636,7 @@ sinfo
 **예상 출력:**
 ```
 PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
-compute-gpu*  up   infinite      2  idle~ compute-gpu-distributed-ml-[1-4]
+compute-gpu*    up   infinite      2   idle compute-gpu-st-distributed-ml-[1-2]
 ```
 
 > 📝 **노드 상태:**
@@ -690,7 +667,31 @@ srun --partition=compute-gpu \
 
 **예상 출력:**
 ```
-TBU
+ubuntu@ip-10-0-3-12:~$ srun --partition=compute-gpu \
+>      --nodes=1 \
+>      --ntasks=1 \
+>      --gpus-per-node=1 \
+>      nvidia-smi
+Sat Nov 29 19:21:33 2025       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 570.172.08             Driver Version: 570.172.08     CUDA Version: 12.8     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A10G                    On  |   00000000:00:1E.0 Off |                    0 |
+|  0%   24C    P8             13W /  300W |       0MiB /  23028MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
 ```
 
 ### 작업 큐 확인
@@ -703,7 +704,7 @@ squeue
 squeue -u $USER
 
 # 작업 상세 정보
-scontrol show job <JOB_ID>
+scontrol show job 1
 ```
 
 ### Compute Node 상태 확인
@@ -713,7 +714,7 @@ scontrol show job <JOB_ID>
 sinfo
 
 # 특정 노드 상세 정보
-scontrol show node compute-gpu-distributed-ml-1
+scontrol show node compute-gpu-st-distributed-ml-1
 ```
 
 ---
@@ -733,6 +734,197 @@ scontrol show node compute-gpu-distributed-ml-1
 cat >> ~/pcluster-env.sh << EOF
 export CLUSTER_NAME=${CLUSTER_NAME}
 EOF
+```
+
+---
+
+## 🔧 모든 컴퓨트 노드에 FSx Lustre 마운트하기
+
+### ⚠️ FSx Lustre 마운트 문제 해결 (컴퓨트 노드)
+
+> 🚨 **현재 알려진 이슈:**
+> 
+> 컴퓨트 노드에서도 헤드 노드와 동일하게 Lustre 클라이언트 커널 모듈 버전 불일치로 인해
+> FSx Lustre가 자동으로 마운트되지 않는 현상이 발생합니다.
+> 
+> 아래 가이드를 따라 **모든 컴퓨트 노드에 한 번에 마운트**를 진행할 수 있습니다.
+
+---
+
+### 1️⃣ 마운트 스크립트 생성
+
+헤드 노드에서 다음 명령어를 실행하여 스크립트를 생성합니다:
+
+```bash
+cat > mount_lustre.sh << 'EOF'
+#!/bin/bash
+
+# FSx Lustre 마운트 스크립트
+# 모든 컴퓨트 노드에서 실행될 스크립트
+
+set -e  # 에러 발생 시 중단
+
+NODE_NAME=$(hostname)
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "[$TIMESTAMP] 🖥️  Node: $NODE_NAME - Starting FSx Lustre mount process..."
+
+# 1. 커널 버전 확인
+KERNEL_VERSION=$(uname -r)
+echo "[$TIMESTAMP] 🔍 Current kernel version: $KERNEL_VERSION"
+
+# 2. 설치된 Lustre 모듈 확인
+echo "[$TIMESTAMP] 🔍 Checking installed Lustre modules..."
+INSTALLED_LUSTRE=$(dpkg -l | grep "lustre-client-modules-$KERNEL_VERSION" || echo "not_found")
+
+if [[ "$INSTALLED_LUSTRE" == "not_found" ]]; then
+    echo "[$TIMESTAMP] 📦 Installing Lustre client module for kernel $KERNEL_VERSION..."
+    
+    # rpm 패키지 도구 설치 (필요 시)
+    if ! command -v rpm &> /dev/null; then
+        echo "[$TIMESTAMP] 📦 Installing rpm..."
+        sudo apt-get update -qq
+        sudo apt-get install -y rpm
+    fi
+    
+    # Lustre 클라이언트 모듈 설치
+    sudo apt-get install -y lustre-client-modules-$KERNEL_VERSION
+    
+    if [ $? -ne 0 ]; then
+        echo "[$TIMESTAMP] ❌ Failed to install Lustre module"
+        exit 1
+    fi
+    echo "[$TIMESTAMP] ✅ Lustre module installed successfully"
+else
+    echo "[$TIMESTAMP] ✅ Lustre module already installed"
+fi
+
+# 3. Lustre 커널 모듈 로드
+echo "[$TIMESTAMP] 🔧 Loading Lustre kernel module..."
+if lsmod | grep -q lustre; then
+    echo "[$TIMESTAMP] ✅ Lustre module already loaded"
+else
+    sudo modprobe lustre
+    if [ $? -eq 0 ]; then
+        echo "[$TIMESTAMP] ✅ Lustre module loaded successfully"
+    else
+        echo "[$TIMESTAMP] ❌ Failed to load Lustre module"
+        exit 1
+    fi
+fi
+
+# 4. 파일시스템 등록 확인
+echo "[$TIMESTAMP] 🔍 Verifying Lustre filesystem registration..."
+if cat /proc/filesystems | grep -q lustre; then
+    echo "[$TIMESTAMP] ✅ Lustre filesystem registered"
+else
+    echo "[$TIMESTAMP] ❌ Lustre filesystem not registered"
+    exit 1
+fi
+
+# 5. 마운트 디렉토리 확인
+if [ ! -d "/lustre" ]; then
+    echo "[$TIMESTAMP] 📁 Creating /lustre directory..."
+    sudo mkdir -p /lustre
+fi
+
+# 6. FSx Lustre 마운트
+echo "[$TIMESTAMP] 🔧 Mounting FSx Lustre..."
+sudo mount /lustre
+
+if [ $? -eq 0 ]; then
+    echo "[$TIMESTAMP] ✅ FSx Lustre mounted successfully on $NODE_NAME"
+    df -h | grep lustre
+else
+    echo "[$TIMESTAMP] ❌ Failed to mount FSx Lustre"
+    exit 1
+fi
+
+echo "[$TIMESTAMP] 🎉 Mount process completed on $NODE_NAME"
+EOF
+
+chmod +x mount_lustre.sh
+```
+
+---
+
+### 2️⃣ 마운트 상태 확인 스크립트 생성
+
+```bash
+cat > check_lustre_mount.sh << 'EOF'
+#!/bin/bash
+
+# Lustre 마운트 상태 확인 스크립트
+
+NODE_NAME=$(hostname)
+
+echo "Node: $NODE_NAME"
+if mountpoint -q /lustre; then
+    echo "  Status: ✅ MOUNTED"
+    df -h | grep lustre | awk '{print "  Size: " $2 ", Used: " $3 ", Available: " $4 ", Usage: " $5}'
+else
+    echo "  Status: ❌ NOT MOUNTED"
+fi
+EOF
+
+chmod +x check_lustre_mount.sh
+```
+
+---
+
+### 3️⃣ 모든 컴퓨트 노드에 마운트 실행
+
+#### `srun`으로 즉시 실행
+
+```bash
+# 모든 노드에서 동시 실행
+srun --nodes=2 ./mount_lustre.sh
+```
+
+**예상 출력:**
+```
+[2025-11-29 20:42:48] 🖥️  Node: compute-dy-g5-1 - Starting FSx Lustre mount process...
+[2025-11-29 20:42:48] 🖥️  Node: compute-dy-g5-2 - Starting FSx Lustre mount process...
+[2025-11-29 20:42:48] 📍 Checking if Lustre is already mounted...
+[2025-11-29 20:42:48] ⚠️  Lustre not mounted. Proceeding with mount process...
+[2025-11-29 20:42:48] 🔍 Current kernel version: 6.8.0-1043-aws
+[2025-11-29 20:42:48] 📦 Installing Lustre client module for kernel 6.8.0-1043-aws...
+...
+[2025-11-29 20:42:48] ✅ Lustre module loaded successfully
+[2025-11-29 20:42:48] 🔍 Verifying Lustre filesystem registration...
+[2025-11-29 20:42:48] ✅ Lustre filesystem registered
+[2025-11-29 20:42:48] 🔧 Mounting FSx Lustre...
+[2025-11-29 20:42:48] ✅ FSx Lustre mounted successfully on compute-gpu-st-distributed-ml-2
+10.1.30.23@tcp:/czrc3amv                               2.2T   16M  2.2T   1% /lustre
+[2025-11-29 20:42:48] 🎉 Mount process completed on compute-gpu-st-distributed-ml-2
+[2025-11-29 20:42:48] ✅ Lustre module installed successfully
+[2025-11-29 20:42:48] 🔧 Loading Lustre kernel module...
+[2025-11-29 20:42:48] ✅ Lustre module loaded successfully
+[2025-11-29 20:42:48] 🔍 Verifying Lustre filesystem registration...
+[2025-11-29 20:42:48] ✅ Lustre filesystem registered
+[2025-11-29 20:42:48] 🔧 Mounting FSx Lustre...
+[2025-11-29 20:42:48] ✅ FSx Lustre mounted successfully on compute-gpu-st-distributed-ml-1
+10.1.30.23@tcp:/czrc3amv                               2.2T   16M  2.2T   1% /lustre
+[2025-11-29 20:42:48] 🎉 Mount process completed on compute-gpu-st-distributed-ml-1
+```
+
+---
+
+### 4️⃣ 마운트 상태 확인
+
+```bash
+# 모든 노드에서 마운트 상태 확인
+srun --nodes=2 ./check_lustre_mount.sh
+```
+
+**예상 출력:**
+```
+Node: compute-dy-g5-1
+  Status: ✅ MOUNTED
+  Size: 2.2T, Used: 16M, Available: 2.2T, Usage: 1%
+Node: compute-dy-g5-2
+  Status: ✅ MOUNTED
+  Size: 2.2T, Used: 16M, Available: 2.2T, Usage: 1%
 ```
 
 ---

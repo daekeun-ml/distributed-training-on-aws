@@ -1,6 +1,9 @@
 # distributed-training-on-aws
-Distributed Training on AWS
 
+### Distributed Training on AWS
+
+#### Directory
+```
 distributed-training-on-aws/
 ├── README.md                          # 가이드 개요
 ├── ec2-dlami                          # EC2 DLAMI, DLC 기반 예제 제공 (향후 업데이트 예정)
@@ -12,3 +15,4 @@ distributed-training-on-aws/
     │   ├── scripts/                   # 가이드 활용 된 스크립트들
     │   └── templates/                 # 가이드 활용 된 템플릿들
     └── images/                        # 이미지 및 다이어그램
+```
