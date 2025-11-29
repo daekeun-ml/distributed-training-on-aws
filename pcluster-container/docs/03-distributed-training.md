@@ -618,6 +618,38 @@ compute-gpu-st-distributed-ml-2:7070:7561 [0] NCCL INFO Connected all trees
 
 ...
 
+{'loss': 0.5762, 'grad_norm': 2.765625, 'learning_rate': 1.601671309192201e-07, 'epoch': 1.99}
+{'loss': 0.4222, 'grad_norm': 2.46875, 'learning_rate': 9.052924791086352e-08, 'epoch': 1.99}
+{'loss': 0.5291, 'grad_norm': 2.65625, 'learning_rate': 2.0891364902506967e-08, 'epoch': 2.0}
+{'train_runtime': 2233.4294, 'train_samples_per_second': 21.283, 'train_steps_per_second': 1.331, 'train_loss': 0.562542522418868, 'epoch': 2.0}
+
+======================================================================
+✅ Training Completed Successfully!
+======================================================================
+💾 Saving final model to /lustre/results/qwen-wikitext-20251129-201659...
+✓ Model saved to: /lustre/results/qwen-wikitext-20251129-201659
+✓ Training info saved to: /lustre/results/qwen-wikitext-20251129-201659/training_info.txt
+📊 View logs: tensorboard --logdir=/lustre/logs/qwen-wikitext-20251129-201659
+📤 Results will sync to S3 (if configured)
+======================================================================
+
+[Rank 0] Training job finished successfully! 🎉
+[Rank 1] Training job finished successfully! 🎉
+compute-gpu-st-distributed-ml-2:7070:11027 [0] NCCL INFO misc/socket.cc:47 -> 3
+compute-gpu-st-distributed-ml-2:7070:11027 [0] NCCL INFO misc/socket.cc:58 -> 3
+compute-gpu-st-distributed-ml-2:7070:11027 [0] NCCL INFO misc/socket.cc:781 -> 3
+compute-gpu-st-distributed-ml-2:7070:7147 [0] NCCL INFO misc/socket.cc:832 -> 3
+compute-gpu-st-distributed-ml-1:7614:9432 [0] NCCL INFO misc/socket.cc:47 -> 3
+compute-gpu-st-distributed-ml-1:7614:9432 [0] NCCL INFO misc/socket.cc:58 -> 3
+compute-gpu-st-distributed-ml-1:7614:9432 [0] NCCL INFO misc/socket.cc:781 -> 3
+compute-gpu-st-distributed-ml-1:7614:7692 [0] NCCL INFO misc/socket.cc:832 -> 3
+compute-gpu-st-distributed-ml-2:7070:11027 [0] NCCL INFO comm 0x60630f7f62f0 rank 1 nranks 2 cudaDev 0 busId 1e0 - Abort COMPLETE
+compute-gpu-st-distributed-ml-1:7614:9432 [0] NCCL INFO comm 0x573f9cb382e0 rank 0 nranks 2 cudaDev 0 busId 1e0 - Abort COMPLETE
+==========================================
+Training completed at Sat Nov 29 22:08:07 UTC 2025
+Results saved to: /lustre/results/qwen-wikitext-20251129-201659/
+Checkpoints: /lustre/checkpoints/qwen-wikitext-20251129-201659/
+==========================================
 
 ```
 
@@ -634,6 +666,22 @@ ls -lh /lustre/checkpoints/${EXPERIMENT_NAME}/
 find /lustre/checkpoints/${EXPERIMENT_NAME}/ -name "*.bin" -o -name "checkpoint-*"
 ```
 
+**예상 출력:**
+```
+ubuntu@ip-10-0-3-12:~$ # 체크포인트 디렉토리 확인
+ubuntu@ip-10-0-3-12:~$ ls -lh /lustre/checkpoints/${EXPERIMENT_NAME}/
+total 65K
+drwxrwxr-x 2 ubuntu ubuntu 33K Nov 29 21:49 checkpoint-1486
+drwxrwxr-x 2 ubuntu ubuntu 33K Nov 29 22:07 checkpoint-2972
+ubuntu@ip-10-0-3-12:~$ 
+ubuntu@ip-10-0-3-12:~$ # 저장된 체크포인트 목록
+ubuntu@ip-10-0-3-12:~$ find /lustre/checkpoints/${EXPERIMENT_NAME}/ -name "*.bin" -o -name "checkpoint-*"
+/lustre/checkpoints/qwen-wikitext-20251129-201659/checkpoint-1486
+/lustre/checkpoints/qwen-wikitext-20251129-201659/checkpoint-1486/training_args.bin
+/lustre/checkpoints/qwen-wikitext-20251129-201659/checkpoint-2972
+/lustre/checkpoints/qwen-wikitext-20251129-201659/checkpoint-2972/training_args.bin
+```
+
 #### 최종 결과 확인
 
 ```bash
@@ -643,6 +691,39 @@ ls -lh /lustre/results/${EXPERIMENT_NAME}/
 # 학습 정보 확인
 cat /lustre/results/${EXPERIMENT_NAME}/training_info.txt
 ```
+
+**예상 출력:**
+```
+ubuntu@ip-10-0-3-12:~$ # 결과 디렉토리 확인
+ubuntu@ip-10-0-3-12:~$ ls -lh /lustre/results/${EXPERIMENT_NAME}/
+total 947M
+-rw-rw-r-- 1 ubuntu ubuntu  605 Nov 29 22:07 added_tokens.json
+-rw-rw-r-- 1 ubuntu ubuntu 2.4K Nov 29 22:07 chat_template.jinja
+-rw-rw-r-- 1 ubuntu ubuntu 1.3K Nov 29 22:07 config.json
+-rw-rw-r-- 1 ubuntu ubuntu  117 Nov 29 22:07 generation_config.json
+-rw-rw-r-- 1 ubuntu ubuntu 1.6M Nov 29 22:07 merges.txt
+-rw-rw-r-- 1 ubuntu ubuntu 943M Nov 29 22:07 model.safetensors
+-rw-rw-r-- 1 ubuntu ubuntu  502 Nov 29 22:07 special_tokens_map.json
+-rw-rw-r-- 1 ubuntu ubuntu  11M Nov 29 22:07 tokenizer.json
+-rw-rw-r-- 1 ubuntu ubuntu 4.6K Nov 29 22:07 tokenizer_config.json
+-rw-rw-r-- 1 ubuntu ubuntu 5.4K Nov 29 22:07 training_args.bin
+-rw-rw-r-- 1 ubuntu ubuntu  238 Nov 29 22:07 training_info.txt
+-rw-rw-r-- 1 ubuntu ubuntu 2.7M Nov 29 22:07 vocab.json
+ubuntu@ip-10-0-3-12:~$ 
+ubuntu@ip-10-0-3-12:~$ # 학습 정보 확인
+ubuntu@ip-10-0-3-12:~$ cat /lustre/results/${EXPERIMENT_NAME}/training_info.txt
+Experiment Name: qwen-wikitext-20251129-201659
+Dataset: WikiText-2
+Model: Qwen2.5-0.5B
+Nodes: 2
+Total Samples: 23767
+Epochs: 2
+Batch Size (per device): 4
+Gradient Accumulation: 2
+Learning Rate: 2e-05
+Completed: 2025-11-29T22:07:56.257921
+```
+
 
 ✅ 분산 학습 실행이 완료되었습니다!
 
