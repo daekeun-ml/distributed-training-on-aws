@@ -785,11 +785,11 @@ aws ecr describe-images \
 
 **예상 출력:**
 ```
-------------------------------------------------------------
-|                    DescribeImages                        |
-+----------+---------------------------+-------------------+
-|  latest  |  2024-01-01T12:00:00+00:00|  15234567890     |
-+----------+---------------------------+-------------------+
+---------------------------------------------------------------
+|                       DescribeImages                        |
++--------+------------------------------------+---------------+
+|  latest|  2025-11-29T14:57:42.983000+00:00  |  10388392074  |
++--------+------------------------------------+---------------+
 ```
 
 ---
@@ -840,7 +840,7 @@ aws s3 ls | grep ${S3_BUCKET_NAME}
 
 **예상 출력:**
 ```
-2024-01-01 12:00:00 parallelcluster-123456789012-us-east-1
+2025-11-29 16:08:26 parallelcluster-123456789012-us-east-1
 ```
 
 ---
@@ -881,8 +881,8 @@ ls -lh examples/scripts/bootstrap/
 
 **예상 출력:**
 ```
--rwxr-xr-x  1 user  staff   3.2K  head-node-enroot-pyxis-setup.sh
--rwxr-xr-x  1 user  staff   2.8K  compute-node-enroot-pyxis-setup.sh
+-rw-r--r--. 1 user  staff 7.5K Nov 29 14:31 compute-node-enroot-pyxis-setup.sh
+-rw-r--r--. 1 user  staff 8.4K Nov 29 14:31 head-node-enroot-pyxis-setup.sh
 ```
 
 #### 부트스트랩 스크립트 업로드
@@ -914,8 +914,8 @@ aws s3 ls s3://${S3_BUCKET_NAME}/scripts/bootstrap/
 
 **예상 출력:**
 ```
-2024-01-01 12:00:00       3276 head-node-enroot-pyxis-setup.sh
-2024-01-01 12:00:00       2891 compute-node-enroot-pyxis-setup.sh
+2025-11-29 16:11:37       7654 compute-node-enroot-pyxis-setup.sh
+2025-11-29 16:11:35       8517 head-node-enroot-pyxis-setup.sh
 ```
 
 #### 스크립트 URL 환경 변수 저장
@@ -956,106 +956,138 @@ EOF
 
 ### 5.3 학습 데이터셋 준비
 
-학습에 사용할 데이터셋을 S3에 업로드합니다. 이 데이터는 FSx Lustre를 통해 고성능으로 접근할 수 있습니다.
+학습에 사용할 데이터셋을 S3에 업로드합니다. 이 예제에서는 Hugging Face의 WikiText-2 데이터셋을 사용합니다.
+이 데이터는 FSx Lustre를 통해 고성능으로 접근할 수 있습니다.
 
 #### S3 디렉토리 구조
 
-학습 워크플로우에 맞춰 S3에 다음과 같은 디렉토리 구조를 생성합니다:
+#### 데이터셋 준비 스크립트
 
-```
-s3://parallelcluster-{account-id}-{region}/
-├── data/              # 학습 데이터셋
-├── checkpoints/       # 모델 체크포인트 (학습 중 저장)
-├── logs/              # 학습 로그
-├── results/           # 최종 결과 및 모델
-└── scripts/           # ParallelCluster Node 관련 부트스트랩 스크립트 (이미 생성됨)
-```
+레포지토리에 포함된 데이터셋 준비 스크립트를 사용합니다.
 
-#### 디렉토리 생성
+> 📁 **파일 위치:** `examples/scripts/python/dataset_prepare_and_upload.py`
 
-```bash
-# S3에 디렉토리 구조 생성
-aws s3api put-object --bucket ${S3_BUCKET_NAME} --key data/ --region ${AWS_REGION}
-aws s3api put-object --bucket ${S3_BUCKET_NAME} --key checkpoints/ --region ${AWS_REGION}
-aws s3api put-object --bucket ${S3_BUCKET_NAME} --key logs/ --region ${AWS_REGION}
-aws s3api put-object --bucket ${S3_BUCKET_NAME} --key results/ --region ${AWS_REGION}
-```
-
-#### 샘플 데이터셋 업로드
-
-```bash
-# 임시 디렉토리 생성
-mkdir -p /tmp/sample-data
-
-# 샘플 데이터 파일 생성
-cat > /tmp/sample-data/README.txt << 'EOF'
-Sample Training Dataset
-=======================
-This directory contains sample training data.
-Replace this with your actual dataset.
-EOF
-
-# S3에 업로드
-aws s3 cp /tmp/sample-data/ \
-  s3://${S3_BUCKET_NAME}/data/sample/ \
-  --recursive \
-  --region ${AWS_REGION}
-
-# 정리
-rm -rf /tmp/sample-data
-```
-
-#### 실제 데이터셋 업로드 예시
-
-**대용량 데이터셋 업로드:**
-```bash
-# 로컬 데이터셋 디렉토리를 S3로 업로드
-aws s3 sync /path/to/your/dataset/ \
-  s3://${S3_BUCKET_NAME}/data/imagenet/ \
-  --region ${AWS_REGION}
-```
-
-**Hugging Face 데이터셋:**
-```bash
-# Python 스크립트로 데이터셋 다운로드 및 S3 업로드
-python3 << 'EOF'
-from datasets import load_dataset
-import boto3
+**스크립트 내용:**
+```python
 import os
+from datasets import load_dataset
 
-# 데이터셋 다운로드
-dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train[:1000]")
+def prepare_wikitext():
+    """WikiText-2 데이터셋 다운로드 및 준비"""
+    print("📥 Downloading WikiText-2...")
+    dataset = load_dataset("wikitext", "wikitext-2-raw-v1")
+    
+    output_dir = "./wikitext-2-prepared"
+    dataset.save_to_disk(output_dir)
+    
+    print(f"✅ Dataset saved to {output_dir}")
+    print(f"📊 Train samples: {len(dataset['train'])}")
+    print(f"📊 Validation samples: {len(dataset['validation'])}")
+    print(f"📊 Test samples: {len(dataset['test'])}")
+    
+    return output_dir
 
-# 로컬에 저장
-output_dir = "/tmp/wikitext-sample"
-dataset.save_to_disk(output_dir)
-
-# S3로 업로드
-s3 = boto3.client('s3')
-bucket_name = os.environ['S3_BUCKET_NAME']
-
-for root, dirs, files in os.walk(output_dir):
-    for file in files:
-        local_path = os.path.join(root, file)
-        s3_path = local_path.replace(output_dir, 'data/wikitext').lstrip('/')
-        s3.upload_file(local_path, bucket_name, s3_path)
-        print(f"Uploaded: {s3_path}")
-
-print("Dataset upload completed!")
-EOF
+if __name__ == "__main__":
+    # 데이터셋 준비
+    wikitext_dir = prepare_wikitext()
+    
+    # 환경 변수에서 S3 정보 가져오기
+    s3_bucket = os.environ.get('S3_BUCKET_NAME')
+    aws_region = os.environ.get('AWS_REGION', 'us-east-1')
+    
+    if s3_bucket:
+        s3_path = f"s3://{s3_bucket}/data/wikitext-2/"
+        
+        print(f"\n📤 To upload to S3, run the following command:")
+        print(f"\naws s3 sync {wikitext_dir} {s3_path} --region {aws_region}")
+    else:
+        print("\n⚠️  S3_BUCKET_NAME environment variable not set.")
+        print("Set it with: export S3_BUCKET_NAME=your-bucket-name")
+        print(f"\nThen run:")
+        print(f"aws s3 sync {wikitext_dir} s3://YOUR-BUCKET/data/wikitext-2/ --region us-east-1")
 ```
 
-#### 업로드된 데이터 확인
+#### 필요한 Python 패키지 설치
 
 ```bash
-# S3 데이터 확인
-aws s3 ls s3://${S3_BUCKET_NAME}/data/ --recursive --human-readable
+# datasets 라이브러리 설치
+pip3 install datasets
+```
+
+#### 데이터셋 다운로드 및 준비
+
+```bash
+# 레포지토리 루트로 이동
+cd ~/distributed-training-on-aws/pcluster-container
+
+# 환경 변수 로드 (S3_BUCKET_NAME 필요)
+source ~/pcluster-env.sh
+
+# 스크립트 실행
+python3 examples/scripts/python/dataset_prepare_and_upload.py
 ```
 
 **예상 출력:**
 ```
-2024-01-01 12:00:00    1.2 KiB data/sample/README.txt
-2024-01-01 12:05:00   10.5 MiB data/wikitext/dataset_info.json
+📥 Downloading WikiText-2...
+Downloading data files: 100%|████████████████████| 3/3 [00:01<00:00,  2.14it/s]
+Extracting data files: 100%|█████████████████████| 3/3 [00:00<00:00, 45.23it/s]
+Generating train split: 36718 examples [00:02, 15234.56 examples/s]
+Generating validation split: 3760 examples [00:00, 18234.12 examples/s]
+Generating test split: 4358 examples [00:00, 17654.34 examples/s]
+✅ Dataset saved to ./wikitext-2-prepared
+📊 Train samples: 36718
+📊 Validation samples: 3760
+📊 Test samples: 4358
+
+📤 To upload to S3, run the following command:
+
+aws s3 sync ./wikitext-2-prepared s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/ --region us-east-1
+```
+
+> ⏱️ **예상 소요 시간:** 약 2-3분 (다운로드)
+
+#### S3에 업로드
+
+스크립트가 출력한 명령어를 복사하여 실행합니다:
+
+```bash
+# 스크립트 출력 명령어 실행
+aws s3 sync ./wikitext-2-prepared s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/ --region us-east-1
+```
+
+**예상 출력:**
+```
+upload: ./wikitext-2-prepared/dataset_info.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/dataset_info.json
+upload: ./wikitext-2-prepared/train/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/train/data-00000-of-00001.arrow
+upload: ./wikitext-2-prepared/validation/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/validation/data-00000-of-00001.arrow
+upload: ./wikitext-2-prepared/test/data-00000-of-00001.arrow to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/test/data-00000-of-00001.arrow
+upload: ./wikitext-2-prepared/state.json to s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/state.json
+```
+
+> ⏱️ **예상 소요 시간:** 약 1-2분 (업로드)
+
+#### 업로드된 데이터 확인
+
+```bash
+# S3에 업로드된 데이터 확인
+aws s3 ls s3://${S3_BUCKET_NAME}/data/wikitext-2/ --recursive --human-readable
+```
+
+**예상 출력:**
+```
+2024-01-01 12:00:00    2.1 KiB data/wikitext-2/dataset_info.json
+2024-01-01 12:00:00    4.5 MiB data/wikitext-2/train/data-00000-of-00001.arrow
+2024-01-01 12:00:00  512.3 KiB data/wikitext-2/validation/data-00000-of-00001.arrow
+2024-01-01 12:00:00  589.7 KiB data/wikitext-2/test/data-00000-of-00001.arrow
+2024-01-01 12:00:00      156 data/wikitext-2/state.json
+```
+
+#### 로컬 파일 정리 (선택사항)
+
+```bash
+# 업로드 완료 후 로컬 파일 삭제
+rm -rf ./wikitext-2-prepared
 ```
 
 ---
@@ -1231,22 +1263,40 @@ done
 
 #### 데이터 접근 예시
 
-DRA 설정이 완료되면 클러스터에서 다음과 같이 데이터에 접근할 수 있습니다:
+DRA 설정이 완료되면 클러스터에서 다음과 같이 데이터에 접근할 수 있습니다.
+
+> 💡 **Lazy Loading:** FSx Lustre는 파일에 처음 접근할 때 S3에서 자동으로 데이터를 가져옵니다. 메타데이터는 DRA 생성 시 즉시 로드되므로 파일 목록은 바로 확인할 수 있습니다.
 
 ```bash
 # 클러스터 Head Node에서 실행 (클러스터 생성 후)
-# S3: s3://bucket/data/imagenet/train/image001.jpg
-# FSx: /lustre/data/imagenet/train/image001.jpg
 
-# S3에서 FSx로 자동 import (첫 접근 시)
-ls /lustre/data/imagenet/
+# WikiText-2 데이터셋 확인 (5.3에서 업로드한 데이터)
+# S3: s3://bucket/data/wikitext-2/
+# FSx: /lustre/data/wikitext-2/
+ls -lh /lustre/data/wikitext-2/
+
+# 예상 출력:
+# drwxr-xr-x 2 root root 4.0K Jan 1 12:00 train
+# drwxr-xr-x 2 root root 4.0K Jan 1 12:00 validation
+# drwxr-xr-x 2 root root 4.0K Jan 1 12:00 test
+# -rw-r--r-- 1 root root 2.1K Jan 1 12:00 dataset_info.json
+# -rw-r--r-- 1 root root  156 Jan 1 12:00 state.json
+
+# 학습 데이터 파일 확인
+ls -lh /lustre/data/wikitext-2/train/
+
+# 데이터 읽기 테스트 (첫 접근 시 S3에서 자동 로드)
+head /lustre/data/wikitext-2/dataset_info.json
 
 # 체크포인트 저장 (FSx → S3로 자동 export)
-cp model.pth /lustre/checkpoints/epoch_10.pth
+# 학습 스크립트에서 사용할 경로
+echo "epoch_10_checkpoint" > /lustre/checkpoints/model_epoch_10.txt
 
 # 로그 저장 (FSx → S3로 자동 export)
-echo "Training completed" > /lustre/logs/training.log
-```
+echo "Training started at $(date)" > /lustre/logs/training.log
+
+# 최종 결과 저장 (FSx → S3로 자동 export)
+echo "Training completed" > /lustre/results/final_model_info.txt
 
 #### FSx Lustre 디렉토리 환경 변수 저장
 
