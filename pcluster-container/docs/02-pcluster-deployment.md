@@ -119,7 +119,10 @@ Scheduling:
       - JobCompLoc: /home/slurm/slurm-job-completions.txt
       - JobAcctGatherType: jobacct_gather/linux
       # Increase timeout before marking node as DOWN
-      - SlurmdTimeout: 1000
+      - SlurmdTimeout: 1800
+      - ResumeTimeout: 1800
+      - SuspendTimeout: 300
+      - ReturnToService: 2
   SlurmQueues:
     - Name: compute-gpu
       CapacityType: ONDEMAND
@@ -361,21 +364,20 @@ aws cloudformation describe-stack-events \
 Session Manager를 통해 Head Node에 접속합니다:
 
 ```bash
-# SSH 접속
-pcluster ssh \
-  --cluster-name ${CLUSTER_NAME} \
-  --region ${AWS_REGION}
+aws ssm start-session --target $(pcluster describe-cluster --region ${AWS_REGION} -n ${CLUSTER_NAME} | jq '.headNode.instanceId' | tr -d '"')
 ```
 
 **예상 출력:**
 ```
-Starting session with SessionId: user-0a1b2c3d4e5f6g7h8
+$ aws ssm start-session --target $(pcluster describe-cluster --region ${AWS_REGION} -n ${CLUSTER_NAME} | jq '.headNode.instanceId' | tr -d '"')
 
-       __|  __|_  )
-       _|  (     /   Amazon Linux 2
-      ___|\___|___|
+Starting session with SessionId: i-06e9f603643fc3f26-alsudcf75qe2lzy5vdidhs825i
+$ 
+```
 
-ubuntu@ip-10-0-0-123:~$
+Ubuntu 사용자로 전환 합니다.
+```bash
+sudo su - ubuntu
 ```
 
 > 💡 **Session Manager 사용:**
@@ -383,19 +385,185 @@ ubuntu@ip-10-0-0-123:~$
 > - IAM 기반 인증
 > - 세션 로그 자동 기록
 
+---
+
+### ⚠️ FSx Lustre 마운트 문제 해결 (중요)
+
+> 🚨 **현재 알려진 이슈 (2025.11.30 기준):**
+> 
+> Head Node의 Lustre 클라이언트 커널 모듈 버전과 실제 시스템 커널 버전이 일치하지 않아 
+> FSx Lustre가 자동으로 마운트되지 않는 현상이 발생하고 있습니다.
+> 
+> 이는 Ubuntu 22.04 이미지의 커널 업데이트와 Lustre 클라이언트 패키지 버전 불일치로 인한 문제입니다.
+> **현재는 수동으로 마운트를 진행해야 하며, 향후 업데이트 시 자동화 방법을 안내하겠습니다.**
+
+#### 1. 마운트 상태 확인
+
+먼저 FSx Lustre가 정상적으로 마운트되었는지 확인합니다:
+
+```bash
+# 마운트된 파일시스템 확인
+df -h | grep lustre
+
+# 또는 직접 디렉토리 접근 시도
+ls -la /lustre
+```
+
+**정상적인 경우 (자동 마운트 성공):**
+```
+10.1.30.23@tcp:/czrc3amv  2.2T   16M  2.2T   1% /lustre
+```
+
+**문제가 있는 경우:**
+```bash
+ls: cannot open directory '/lustre': No such device
+```
+
+#### 2. 커널 및 Lustre 버전 불일치 확인
+
+마운트가 실패한 경우, 커널 버전과 Lustre 모듈 버전을 확인합니다:
+
+```bash
+# 현재 실행 중인 커널 버전 확인
+uname -r
+
+# 설치된 Lustre 클라이언트 모듈 확인
+dpkg -l | grep lustre
+```
+
+**예상 출력:**
+```bash
+# uname -r
+6.8.0-1043-aws
+
+# dpkg -l | grep lustre
+ii  lustre-client-modules-6.8.0-1039-aws  2.15.6-1fsx21  amd64
+```
+
+> 📝 **문제 원인:** 
+> - 시스템 커널: `6.8.0-1043-aws`
+> - Lustre 모듈: `6.8.0-1039-aws`
+> - **버전 불일치**로 인해 Lustre 모듈을 로드할 수 없음
+
+#### 3. 올바른 Lustre 모듈 설치
+
+현재 커널 버전에 맞는 Lustre 클라이언트 모듈을 설치합니다:
+
+```bash
+# rpm 패키지 관리 도구 설치 (필요 시)
+sudo apt-get install -y rpm
+
+# 현재 커널 버전에 맞는 Lustre 모듈 설치
+sudo apt-get install -y lustre-client-modules-$(uname -r)
+```
+
+**예상 출력:**
+```
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following NEW packages will be installed:
+  lustre-client-modules-6.8.0-1043-aws
+0 upgraded, 1 newly installed, 0 to remove and 32 not upgraded.
+Need to get 25.2 MB of archives.
+After this operation, 128 MB of additional disk space will be used.
+Get:1 https://fsx-lustre-client-repo.s3.amazonaws.com/ubuntu jammy/main amd64 lustre-client-modules-6.8.0-1043-aws amd64 2.15.6-1fsx25 [25.2 MB]
+Fetched 25.2 MB in 0s (68.9 MB/s)
+Selecting previously unselected package lustre-client-modules-6.8.0-1043-aws.
+...
+Setting up lustre-client-modules-6.8.0-1043-aws (2.15.6-1fsx25) ...
+```
+
+#### 4. Lustre 커널 모듈 로드
+
+Lustre 파일시스템 모듈을 커널에 로드합니다:
+
+```bash
+# Lustre 모듈 로드
+sudo modprobe lustre
+
+# 모듈 로드 확인
+lsmod | grep lustre
+```
+
+**예상 출력:**
+```
+lustre               1126400  0
+mdc                   294912  1 lustre
+lov                   356352  2 mdc,lustre
+lmv                   229376  1 lustre
+ptlrpc               1544192  7 fld,osc,fid,lov,mdc,lmv,lustre
+obdclass             3399680  8 fld,osc,fid,ptlrpc,lov,mdc,lmv,lustre
+lnet                  839680  6 osc,obdclass,ptlrpc,ksocklnd,lmv,lustre
+libcfs                237568  11 fld,lnet,osc,fid,obdclass,ptlrpc,ksocklnd,lov,mdc,lmv,lustre
+```
+
+#### 5. 파일시스템 등록 확인
+
+Lustre 파일시스템이 커널에 등록되었는지 확인합니다:
+
+```bash
+# 지원되는 파일시스템 확인
+cat /proc/filesystems | grep lustre
+```
+
+**예상 출력:**
+```
+nodev   lustre
+```
+
+✅ `lustre`가 표시되면 정상입니다!
+
+#### 6. FSx Lustre 마운트
+
+이제 FSx Lustre를 수동으로 마운트합니다:
+
+```bash
+# Lustre 마운트
+sudo mount /lustre
+
+# 마운트 확인
+df -h | grep lustre
+```
+
+**예상 출력:**
+```
+10.1.30.23@tcp:/czrc3amv  2.2T   16M  2.2T   1% /lustre
+```
+
+#### 7. Lustre 디렉토리 구조 확인
+
+마운트가 성공하면 DRA로 연결된 디렉토리를 확인합니다:
+
+```bash
+# Lustre 디렉토리 확인
+ls -la /lustre/
+```
+
+**예상 출력:**
+```
+total 167
+drwxrwxrwt  8 root root 33280 Nov 29 17:27 .
+drwxr-xr-x 23 root root  4096 Nov 29 17:50 ..
+drwxrwxr-x  2 root root 33280 Nov 29 17:03 checkpoints
+drwxrwxr-x  3 root root 33280 Nov 29 16:17 data
+drwxrwxr-x  2 root root 33280 Nov 29 17:24 logs
+drwxrwxr-x  2 root root 33280 Nov 29 17:27 results
+```
+
+✅ **마운트 성공!** 이제 정상적으로 FSx Lustre를 사용할 수 있습니다.
+
+---
+
 ### 기본 환경 확인
 
 Head Node에 접속한 후 다음 명령으로 환경을 확인합니다:
 
-#### OS 및 시스템 정보
+#### OS 정보
 
 ```bash
 # OS 정보
 cat /etc/os-release
-
-# 시스템 리소스
-free -h
-df -h
 ```
 
 **예상 출력:**
@@ -405,9 +573,8 @@ VERSION="22.04.x LTS (Jammy Jellyfish)"
 ID=ubuntu
 ID_LIKE=debian
 
-              total        used        free      shared  buff/cache   available
-Mem:          125Gi       2.5Gi       120Gi       1.0Mi       2.8Gi       122Gi
-Swap:            0B          0B          0B
+...
+
 ```
 
 #### 공유 스토리지 확인
@@ -424,30 +591,6 @@ mount | grep -E 'fsx|lustre'
 ```
 10.0.1.100@tcp:/fsvol-xxx  512G   64M  512G   1% /fsx
 10.0.1.101@tcp:/yyyyyyy    1.2T  1.1M  1.2T   1% /lustre
-```
-
-#### FSx Lustre 디렉토리 구조 확인
-
-```bash
-# Lustre 디렉토리 확인
-ls -la /lustre/
-
-# DRA로 연결된 디렉토리 확인
-ls -la /lustre/data/
-ls -la /lustre/checkpoints/
-ls -la /lustre/logs/
-ls -la /lustre/results/
-```
-
-**예상 출력:**
-```
-total 16
-drwxr-xr-x  6 root root 4096 Nov 29 16:00 .
-drwxr-xr-x 23 root root 4096 Nov 29 17:00 ..
-drwxr-xr-x  3 root root 4096 Nov 29 16:50 data
-drwxr-xr-x  2 root root 4096 Nov 29 16:17 checkpoints
-drwxr-xr-x  2 root root 4096 Nov 29 16:17 logs
-drwxr-xr-x  2 root root 4096 Nov 29 16:17 results
 ```
 
 #### WikiText-2 데이터셋 확인
@@ -467,24 +610,6 @@ drwxr-xr-x 2 root root 4.0K Nov 29 16:49 validation
 ```
 
 > 💡 **Lazy Loading:** 파일 메타데이터는 즉시 보이지만, 실제 데이터는 파일 접근 시 S3에서 로드됩니다.
-
-#### Docker 확인
-
-```bash
-# Docker 버전 확인
-docker --version
-
-# Docker 서비스 상태
-sudo systemctl status docker
-```
-
-**예상 출력:**
-```
-Docker version 24.0.7, build afdd53b
-● docker.service - Docker Application Container Engine
-     Loaded: loaded (/lib/systemd/system/docker.service; enabled)
-     Active: active (running)
-```
 
 #### Enroot 확인
 

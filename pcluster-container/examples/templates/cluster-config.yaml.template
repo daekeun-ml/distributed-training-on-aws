@@ -48,7 +48,10 @@ Scheduling:
       - JobCompLoc: /home/slurm/slurm-job-completions.txt
       - JobAcctGatherType: jobacct_gather/linux
       # Increase timeout before marking node as DOWN
-      - SlurmdTimeout: 1000
+      - SlurmdTimeout: 1800
+      - ResumeTimeout: 1800
+      - SuspendTimeout: 300
+      - ReturnToService: 2
   SlurmQueues:
     - Name: compute-gpu
       CapacityType: ONDEMAND

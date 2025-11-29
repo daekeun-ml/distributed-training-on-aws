@@ -3,6 +3,7 @@ Distributed Training on AWS
 
 distributed-training-on-aws/
 ├── README.md                          # 가이드 개요
+├── ec2-dlami                          # EC2 DLAMI, DLC 기반 예제 제공 (향후 업데이트 예정)
 └── pcluster-container/                
     ├── README.md                      # 엔트리 문서
     ├── docs/                          # 상세 가이드 문서들
