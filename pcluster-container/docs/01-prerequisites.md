@@ -1075,7 +1075,7 @@ aws s3 sync ./wikitext-2-prepared s3://parallelcluster-123456789012-us-east-1/da
 
 ```bash
 # 스크립트 출력 명령어 실행
-aws s3 sync ./wikitext-2-prepared s3://parallelcluster-123456789012-us-east-1/data/wikitext-2/ --region us-east-1
+aws s3 sync ./wikitext-2-prepared s3://${S3_BUCKET_NAME}/data/wikitext-2/ --region ${AWS_REGION}
 ```
 
 **예상 출력:**

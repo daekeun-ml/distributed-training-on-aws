@@ -212,7 +212,7 @@ echo "✅ Cluster configuration file created: examples/configs/cluster-config.ya
 - **FSx OpenZFS** (`/fsx`): Home 디렉토리 및 사용자 데이터
 - **FSx Lustre** (`/lustre`): 학습 데이터셋
   - 기존 FSx Lustre 파일 시스템을 사용 (`FileSystemId`로 참조)
-  - **Data Repository Association (DRA)**은 이미 01-prerequisites.md에서 설정됨
+  - **Data Repository Association (DRA)** 은 이미 01-prerequisites.md에서 설정됨
   - 클러스터가 마운트하면 기존 DRA 설정이 자동으로 적용됨:
     - `/lustre/data` ↔ `s3://${S3_BUCKET_NAME}/data/`
     - `/lustre/checkpoints` ↔ `s3://${S3_BUCKET_NAME}/checkpoints/`
@@ -733,7 +733,7 @@ scontrol show node compute-gpu-st-distributed-ml-1
 
 ✅ ParallelCluster 배포가 완료되었습니다!
 
-이제 **[3. 분산 학습 실행](./03-distributed-training.md)**으로 진행하여 실제 학습 작업을 실행하세요.
+이제 **[3. 분산 학습 실행](./03-distributed-training.md)** 으로 진행하여 실제 학습 작업을 실행하세요.
 
 ---
 
