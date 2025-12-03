@@ -367,7 +367,6 @@ sbatch train-distributed.sbatch
 **예상 출력:**
 ```
 Submitted batch job 2
-
 ```
 
 ---
@@ -377,6 +376,10 @@ Submitted batch job 2
 
 ```bash
 # 작업 상태 확인
+export JOB_ID=$(squeue -u $USER -h -o %i | head -n 1)
+[ -z "$JOB_ID" ] && read -p "Enter JOB_ID: " JOB_ID
+echo "JOB_ID: $JOB_ID"
+
 squeue
 
 scontrol show job ${JOB_ID}
@@ -653,6 +656,17 @@ Checkpoints: /lustre/checkpoints/qwen-wikitext-20251129-201659/
 
 ```
 
+#### 트러블슈팅
+아래와 같은 권한 문제로 학습이 중단되면 user를 `ubuntu`로 바꾸거나 chmod로 권한 변경 후 재시도합니다.
+```bash
+[Rank 0] Creating output directories...
+✗ [Rank 0] Error creating directories: [Errno 13] Permission denied: '/lustre/checkpoints/qwen-wikitext-20251202-142643'
+```
+
+```bash
+# user 변경
+sudo chown -R $USER:$USER /lustre
+```
 
 ### 3.3.1 로컬 결과 확인
 
@@ -666,7 +680,8 @@ ls -lh /lustre/checkpoints/${EXPERIMENT_NAME}/
 find /lustre/checkpoints/${EXPERIMENT_NAME}/ -name "*.bin" -o -name "checkpoint-*"
 ```
 
-**예상 출력:**
+**예상 출력**:
+
 ```
 ubuntu@ip-10-0-3-12:~$ # 체크포인트 디렉토리 확인
 ubuntu@ip-10-0-3-12:~$ ls -lh /lustre/checkpoints/${EXPERIMENT_NAME}/
@@ -685,6 +700,9 @@ ubuntu@ip-10-0-3-12:~$ find /lustre/checkpoints/${EXPERIMENT_NAME}/ -name "*.bin
 #### 최종 결과 확인
 
 ```bash
+EXPERIMENT_NAME=$(tail -3 distributed-training-${JOB_ID}.out | grep -oP '(?<=/)[\w-]+(?=/$)' | head -1)
+echo "EXPERIMENT_NAME: $EXPERIMENT_NAME"
+
 # 결과 디렉토리 확인
 ls -lh /lustre/results/${EXPERIMENT_NAME}/
 
@@ -723,7 +741,7 @@ Gradient Accumulation: 2
 Learning Rate: 2e-05
 Completed: 2025-11-29T22:07:56.257921
 ```
-
+</details>
 
 ✅ 분산 학습 실행이 완료되었습니다!
 

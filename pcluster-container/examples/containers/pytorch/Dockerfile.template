@@ -1,0 +1,104 @@
+FROM public.ecr.aws/deep-learning-containers/pytorch-training:2.5.1-gpu-py311-cu124-ubuntu22.04-ec2-v1.30
+
+
+# EFA release notes: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-changelog.html
+ARG EFA_INSTALLER_VERSION=1.45.1
+ARG OPEN_MPI_PATH=/opt/amazon/openmpi
+
+RUN apt-get update && apt-get install -y \
+    openssh-server \
+    pdsh \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+########################################################################################
+# [START] AWS 추가 설정 (필수는 아님)
+########################################################################################
+# InfiniBand verbs 관련 패키지 제거
+RUN apt-get remove -y --allow-change-held-packages \
+    ibverbs-utils \
+    libibverbs-dev \
+    libibverbs1 \
+    libmlx5-1
+
+# MPI 및 통신 라이브러리 정리 (HPC-X OpenMPI, MPI, UCX 디렉토리 삭제), 공유 라이브러리 캐시 업데이트 (lconfig)
+RUN rm -rf /opt/hpcx/ompi \
+    && rm -rf /usr/local/mpi \
+    && rm -rf /usr/local/ucx \
+    && ldconfig
+
+# SSH 서버 설정    
+RUN mkdir -p /var/run/sshd && \
+    sed -i 's/[ #]\(.*StrictHostKeyChecking \).*/ \1no/g' /etc/ssh/ssh_config && \
+    echo "    UserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config && \
+    sed -i 's/#\(StrictModes \).*/\1no/g' /etc/ssh/sshd_config && \
+    sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
+
+# SSH 키 생성 - 자기 자신에게 SSH 접속 가능하도록 설정 (MPI 멀티노드 작업용)
+RUN rm -rf /root/.ssh/ \
+ && mkdir -p /root/.ssh/ \
+ && ssh-keygen -q -t rsa -N '' -f /root/.ssh/id_rsa \
+ && cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \
+ && printf "Host *\n  StrictHostKeyChecking no\n" >> /root/.ssh/config
+
+# CUDA, OpenMPI, NCCL, EFA, AWS OFI NCCL 라이브러리 경로 
+ENV LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/aws-ofi-nccl/install/lib:$LD_LIBRARY_PATH
+ENV PATH=/opt/amazon/openmpi/bin/:/opt/amazon/efa/bin:/usr/bin:/usr/local/bin:$PATH
+
+## EFA installer 설치 (--skip-kmod: 커널 모듈 설치 건너뛰기 - 컨테이너에서 불필요)
+RUN cd $HOME \
+    && curl -O https://efa-installer.amazonaws.com/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz \
+    && tar -xf $HOME/aws-efa-installer-${EFA_INSTALLER_VERSION}.tar.gz \
+    && cd aws-efa-installer \
+    && (./efa_installer.sh -y -g -d --skip-kmod --skip-limit-conf --no-verify || true) \
+    && echo "/opt/amazon/efa/lib" > /etc/ld.so.conf.d/000_efa.conf \
+    && ldconfig \
+    && rm -rf $HOME/aws-efa-installer
+
+# APT 캐시 정리
+RUN rm -rf /var/lib/apt/lists/*
+
+# OpenMPI 설정
+# - hwloc_base_binding_policy = none: CPU/메모리 바인딩 비활성화 (컨테이너 환경에서 유연성 확보)
+# - rmaps_base_mapping_policy = slot: 프로세스를 슬롯 단위로 매핑 (노드당 프로세스 수 제어)
+RUN echo "hwloc_base_binding_policy = none" >> /opt/amazon/openmpi/etc/openmpi-mca-params.conf \
+ && echo "rmaps_base_mapping_policy = slot" >> /opt/amazon/openmpi/etc/openmpi-mca-params.conf
+
+RUN pip3 install awscli pynvml wandb
+
+# mpirun 래퍼 스크립트 생성
+RUN mv $OPEN_MPI_PATH/bin/mpirun $OPEN_MPI_PATH/bin/mpirun.real \
+ && echo '#!/bin/bash' > $OPEN_MPI_PATH/bin/mpirun \
+ && echo '/opt/amazon/openmpi/bin/mpirun.real "$@"' >> $OPEN_MPI_PATH/bin/mpirun \
+ && chmod a+x $OPEN_MPI_PATH/bin/mpirun   
+    
+## Set Open MPI variables to exclude network interface and conduit.
+# - OMPI_MCA_pml=^ucx: UCX 통신 레이어 제외 (EFA 사용 시 충돌 방지)
+# - OMPI_MCA_btl=tcp,self: TCP와 자기 자신 통신만 사용
+# - OMPI_MCA_btl_tcp_if_exclude: 제외할 네트워크 인터페이스
+# - OPAL_PREFIX: OpenMPI 설치 경로
+# - NCCL_SOCKET_IFNAME: NCCL이 사용하지 않을 인터페이스 (^는 제외 의미)
+ENV OMPI_MCA_pml=^ucx            \
+    OMPI_MCA_btl=tcp,self           \
+    OMPI_MCA_btl_tcp_if_exclude=lo,docker0,veth_def_agent\
+    OPAL_PREFIX=/opt/amazon/openmpi \
+    NCCL_SOCKET_IFNAME=^docker,lo,veth_def_agent
+
+## PMIx (Process Management Interface) 오류 해결: (https://github.com/open-mpi/ompi/issues/7516)
+ENV PMIX_MCA_gds=hash
+
+########################################################################################
+# [END] AWS 추가 설정 (필수는 아님)
+########################################################################################
+
+RUN pip install \
+    transformers>=4.37.0 \
+    flash-attn --no-build-isolation \
+    deepspeed \
+    accelerate \
+    datasets
+
+WORKDIR /workspace
+
+COPY ds_config.json /workspace/
+COPY train_distributed_deepspeed.py /workspace/
