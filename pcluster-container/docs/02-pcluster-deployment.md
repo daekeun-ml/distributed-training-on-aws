@@ -280,9 +280,11 @@ ComputeResources:
 ```bash
 # 설정 파일 내용 확인
 cat examples/configs/cluster-config.yaml
+```
 
 > ⚠️ **주의:**
 > - 환경 변수가 제대로 치환되었는지 꼭 확인하세요.
+
 
 ---
 

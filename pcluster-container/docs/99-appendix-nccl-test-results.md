@@ -7,6 +7,7 @@
 - ap-southeast-2(Sydney) 리전
 - p5e.48xlarge x 1대 
 - Lustre Persist_V1
+- All Recude 연산
 
 ### 결과
 ```bash
@@ -1355,6 +1356,7 @@ compute-gpu-st-distributed-ml-1:32159:32753 [0] NCCL INFO comm 0x5df33bf07b40 ra
 - ap-southeast-2(Sydney) 리전
 - p5e.48xlarge x 2대 
 - Lustre Persist_V1
+- All Reduce 연산
 
 ### 결과
 

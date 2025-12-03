@@ -804,6 +804,7 @@ export ECR_REPO_URI=${ECR_REPO_URI}
 export IMAGE_TAG=${IMAGE_TAG}
 export TRAINING_IMAGE_URI=${ECR_REPO_URI}:${IMAGE_TAG}
 EOF
+```
 
 ---
 
@@ -888,6 +889,7 @@ aws s3api put-object \
   --bucket ${S3_BUCKET_NAME} \
   --key scripts/bootstrap/ \
   --region ${AWS_REGION}
+```
 
 #### 부트스트랩 스크립트 파일 확인
 
