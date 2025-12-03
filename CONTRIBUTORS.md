@@ -8,4 +8,5 @@
   - Email: kicm@amazon.com
 
 ## Contributors
-- TBU
+- **김대근** (@daekeun)
+  - Email: daekeun@amazon.com
